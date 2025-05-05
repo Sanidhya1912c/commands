@@ -1,56 +1,62 @@
-from scapy.all import ARP, Ether, srp
+import subprocess
 import socket
+import ipaddress
+import concurrent.futures
 
-def get_local_network_info():
+def get_subnet():
     """
-    Returns the default local subnet.
-    Modify this if you want to scan a different range.
+    Get subnet range. Change base IP if needed (default is 192.168.1.0/24).
     """
-    return "192.168.1.0/24"  # Common default. Change if needed.
+    return ipaddress.ip_network("192.168.1.0/24", strict=False)
 
-def scan_network(subnet):
+def ping_ip(ip):
     """
-    Scans the given subnet and returns a list of devices found.
-    Each device is a dictionary with IP, MAC, and Hostname (if available).
+    Ping an IP address. Returns (IP, is_up).
+    Works without root on Termux using system ping.
     """
-    print(f"Scanning network: {subnet} ...")
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "1", str(ip)],
+            stdout=subprocess.DEVNULL
+        )
+        if result.returncode == 0:
+            try:
+                hostname = socket.gethostbyaddr(str(ip))[0]
+            except socket.herror:
+                hostname = "Unknown"
+            return (str(ip), hostname)
+    except Exception:
+        pass
+    return None
 
-    # Create an ARP request packet
-    arp = ARP(pdst=subnet)
-    ether = Ether(dst="ff:ff:ff:ff:ff:ff")
-    packet = ether / arp
-
-    # Send the packet and get the response
-    result = srp(packet, timeout=2, verbose=0)[0]
-
-    devices = []
-    for sent, received in result:
-        try:
-            hostname = socket.gethostbyaddr(received.psrc)[0]
-        except socket.herror:
-            hostname = "Unknown"
-
-        devices.append({
-            "IP": received.psrc,
-            "MAC": received.hwsrc,
-            "Hostname": hostname
-        })
-    
-    return devices
-
-def display_devices(devices):
+def scan_network():
     """
-    Nicely prints the list of found devices.
+    Scans the subnet using multithreading for faster execution.
     """
-    print("\nDevices found on the network:")
-    print("-" * 50)
-    print(f"{'IP Address':<16} {'MAC Address':<18} {'Hostname'}")
-    print("-" * 50)
+    subnet = get_subnet()
+    print(f"Scanning subnet: {subnet} ...")
 
-    for device in devices:
-        print(f"{device['IP']:<16} {device['MAC']:<18} {device['Hostname']}")
+    active_hosts = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+        results = executor.map(ping_ip, subnet.hosts())
+        for res in results:
+            if res:
+                active_hosts.append(res)
+
+    return active_hosts
+
+def display_results(devices):
+    """
+    Display active devices found.
+    """
+    print("\nActive Devices Found:")
+    print("-" * 40)
+    print(f"{'IP Address':<18} {'Hostname'}")
+    print("-" * 40)
+    for ip, hostname in devices:
+        print(f"{ip:<18} {hostname}")
+    print("-" * 40)
 
 if __name__ == "__main__":
-    subnet = get_local_network_info()
-    devices = scan_network(subnet)
-    display_devices(devices)
+    devices = scan_network()
+    display_results(devices)
