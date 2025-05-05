@@ -1,4 +1,4 @@
-print("my first script")
+print("idk")
 
 
 
