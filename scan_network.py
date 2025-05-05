@@ -7,7 +7,7 @@ def get_subnet():
     """
     Get subnet range. Change base IP if needed (default is 192.168.1.0/24).
     """
-    return ipaddress.ip_network("192.168.1.0/24", strict=False)
+    return ipaddress.ip_network("192.168.29.0/24", strict=False)
 
 def ping_ip(ip):
     """
